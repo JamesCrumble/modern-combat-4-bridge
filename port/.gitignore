@@ -1,0 +1,8 @@
+build/
+harness/results/
+qemu_*.core
+# Android wrapper output (APK, signing key, sysroot, staging).
+*.apk
+*.idsig
+android/build/
+__pycache__/
