@@ -43,7 +43,7 @@ public final class SettingsActivity extends Activity {
 
     private final Map<String, String> values = new LinkedHashMap<>();
     private float dp;
-    private TextView folderInfo;
+    private TextView folderInfo, versionInfo;
     private boolean hadAccess, asked;
 
     /** The existing settings file (main folder first, then the other), or where it would be written. */
@@ -107,6 +107,11 @@ public final class SettingsActivity extends Activity {
         folderInfo = text("", 12, DIM, false);
         folderInfo.setPadding(0, px(6), 0, 0);
         col.addView(folderInfo);
+        // Which build of the game is in the folder and what that means; filled in by showVersion().
+        versionInfo = text("", 13, ACCENT, false);
+        versionInfo.setPadding(0, px(8), 0, 0);
+        versionInfo.setVisibility(View.GONE);
+        col.addView(versionInfo);
 
         col.addView(section("Картинка"));
         col.addView(choice("Разрешение рендера (высота)", "RENDER_HEIGHT", new int[] { 480, 540, 720 }, 720, "p",
@@ -193,6 +198,19 @@ public final class SettingsActivity extends Activity {
         File main = Storage.mainDir(this);
         folderInfo.setText("Папка игры: " + main.getPath() + (Storage.hasAccess(this) ? ""
                 : "\n(нет доступа ко всем файлам — используется папка приложения в Android/data)"));
+        showVersion();
+    }
+
+    /** Looks at the APK and the cache off the UI thread and tells which version of the game they are. */
+    private void showVersion() {
+        new Thread(() -> {
+            String notice = GameVersion.detect(getApplicationContext()).notice();
+            runOnUiThread(() -> {
+                if (isDestroyed() || versionInfo == null) return;
+                versionInfo.setText(notice == null ? "" : notice);
+                versionInfo.setVisibility(notice == null ? View.GONE : View.VISIBLE);
+            });
+        }, "bridge-version").start();
     }
 
     /** Asks once per launch of this screen for access to all files; the game works without it. */

@@ -5,7 +5,7 @@
 инструменты) взят из `../wild-blood-probe`, слой игры — из `../the-dark-knight-rises-probe` (тот же движок Glitch),
 GDRM — как в N.O.V.A. 3 и Wild Blood.
 
-Обновлено: 2026-10-13.
+Обновлено: 2026-10-18. Версия порта 0.4: поддержаны игра 1.2.3e и 1.2.1a (авто-определение по APK, свой патч-OBB и своя папка профиля у каждой, подробности в CHANGELOG.md).
 
 Рабочая папка: `/home/james/probe/modern-combat-4-zero-hour-probe`. Всё исполняется в WSL (Ubuntu-20.04).
 Телефон: OnePlus 13s (CPH2723, Snapdragon 8 Elite, только AArch64), виден через Windows `adb.exe` (обёртка `tools/adb`).

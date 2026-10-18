@@ -149,7 +149,8 @@ static void install_money(so_module *mod)
     if (infinite) {
         uint32_t *get = (uint32_t *)so_symbol(mod, "_ZNK17PlayerProfileBase15GetTotalCreditsEv");
         uint32_t *rem = (uint32_t *)so_symbol(mod, "_ZN17PlayerProfileBase13RemoveCreditsEi");
-        if (get && rem && get[0] == 0xe92d4010u && rem[0] == 0xe92d40f0u) {
+        /* RemoveCredits starts with a push in both builds (r4-r7 in 1.2.3e, r4-r6 in 1.2.1a). */
+        if (get && rem && get[0] == 0xe92d4010u && (rem[0] & 0xffff0000u) == 0xe92d0000u) {
             get[0] = 0xe59f0000u;           /* ldr r0, [pc, #0]  (the word after the next one) */
             get[1] = 0xe12fff1eu;           /* bx lr */
             get[2] = (uint32_t)kMoneyInfinite;
@@ -158,7 +159,7 @@ static void install_money(so_module *mod)
             __builtin___clear_cache((char *)rem, (char *)(rem + 1));
             trace("tweaks: money: infinite (%d), spending takes nothing", kMoneyInfinite);
         } else {
-            trace("tweaks: money: GetTotalCredits/RemoveCredits not as in 1.2.3e - infinite money left off");
+            trace("tweaks: money: GetTotalCredits/RemoveCredits not as in 1.2.1a/1.2.3e - infinite money left off");
         }
         return;
     }

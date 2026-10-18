@@ -44,7 +44,8 @@ cp android/AndroidManifest.xml "$OUT/AndroidManifest.xml"
 cp -a android/res/. "$OUT/res/"
 # The launcher icon is the original game's own, taken from the player's APK (GAME_APK, or the first one in
 # ../gamebin); the icon kept in android/res is a plain placeholder for builds made without the game at hand.
-GAME_APK="${GAME_APK:-$(ls "$ROOT"/../gamebin/*Ultra*.apk "$ROOT"/../gamebin/*.apk 2>/dev/null | head -1)}"
+# gamebin/ holds one folder per game version (orig-v1-2-3e, ...); the Ultra build of 1.2.3e is preferred.
+GAME_APK="${GAME_APK:-$( { find "$ROOT"/../gamebin -name '*Ultra*.apk'; find "$ROOT"/../gamebin -name '*.apk'; } 2>/dev/null | head -1 || true)}"
 if [ -n "$GAME_APK" ] && unzip -p "$GAME_APK" res/mipmap/icon.png > "$OUT/icon_game.png" 2>/dev/null \
         && [ -s "$OUT/icon_game.png" ]; then
     for d in "$OUT"/res/drawable*/; do

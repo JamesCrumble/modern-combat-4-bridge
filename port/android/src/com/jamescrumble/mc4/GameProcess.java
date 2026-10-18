@@ -71,6 +71,8 @@ final class GameProcess {
     private final GlBridge gl;
     private final PerfHint perf;
     private int renderW = 1280, renderH = 590;
+    /** The folder of game/ the profile goes to; chosen by the game's version (see GameVersion.saveFolder). */
+    private String saveFolder = "saves";
 
     GameProcess(Context ctx, Listener listener) {
         this.ctx = ctx;
@@ -228,7 +230,7 @@ final class GameProcess {
         String where = Storage.describe(ctx);
         File apk = external == null ? null : Storage.firstWithSuffix(ctx, ".apk");
         if (apk == null) {
-            throw new IOException("Не найден оригинальный APK игры (v1.2.3e).\nПоложите его в папку:\n" + where);
+            throw new IOException("Не найден оригинальный APK игры (v1.2.3e или v1.2.1a).\nПоложите его в папку:\n" + where);
         }
         listener.onStatus("Извлечение libModernCombat4.so…");
         extractNative(apk, new File(libDir, "libModernCombat4.so"));
@@ -239,13 +241,13 @@ final class GameProcess {
         new File(game, "files").mkdirs();
 
         // The two .obb files stay where the player put them; the port reads them through game/obb.
-        File obb = external == null ? null : findObbAnywhere();
+        File obb = external == null ? null : findObbAnywhere(ctx);
         if (obb == null && external != null) {
             // Simplest for the player: the cache archive as a zip next to the game APK, unpacked here once.
             File zip = Storage.firstWithSuffix(ctx, ".zip");
             if (zip != null) {
                 extractCache(zip, new File(external, GAME_PACKAGE));
-                obb = findObbAnywhere();
+                obb = findObbAnywhere(ctx);
             }
         }
         if (obb == null) {
@@ -261,8 +263,29 @@ final class GameProcess {
             throw new IOException("Не найден кэш игры (файл " + MAIN_OBB + ").\nПоложите zip-архив с кэшем рядом с APK игры, в папку:\n" + where
                     + "\nЛибо положите два файла .obb в уже созданную папку:\n" + external.getPath() + "/" + GAME_PACKAGE);
         }
-        relink(new File(game, "obb"), obb);
-        appendLog("[wrapper] game data: " + obb.getPath());
+        // The engine is given one main and one patch file, and the patch has to be the one of the APK's version
+        // (a cache zip carries several): game/obb holds links to just those two.
+        GameVersion version = GameVersion.detect(ctx);
+        linkObb(new File(game, "obb"), new File(obb, MAIN_OBB), version.patch);
+        saveFolder = version.saveFolder();
+        appendLog("[wrapper] game data: " + obb.getPath() + ", version " + version.versionName
+                + (version.patch != null ? ", patch " + version.patch.getName() : ", no patch")
+                + (version.patchMatches() ? "" : " (not the one of this version)"));
+    }
+
+    /** game/obb as a folder of links to the main file and the patch (when there is one), nothing else in it. */
+    private static void linkObb(File dir, File main, File patch) throws IOException {
+        // An older install made game/obb a link to the player's folder: remove the link only.
+        if (isLink(dir) || (dir.exists() && !dir.isDirectory())) dir.delete();
+        if (!dir.isDirectory() && !dir.mkdirs()) throw new IOException("mkdir " + dir);
+        File[] old = dir.listFiles();
+        if (old != null) {
+            for (File f : old) {
+                if (isLink(f) && !f.getName().equals(main.getName()) && (patch == null || !f.getName().equals(patch.getName()))) f.delete();
+            }
+        }
+        relink(new File(dir, main.getName()), main);
+        if (patch != null) relink(new File(dir, patch.getName()), patch);
     }
 
     /** Makes link a symlink to target, replacing whatever was there. */
@@ -291,9 +314,8 @@ final class GameProcess {
         return null;
     }
 
-    /** The folder holding the .obb files: the archive's own layout, or the files put there directly. */
-    /** The data in the main folder, or else in the other one. */
-    private File findObbAnywhere() {
+    /** The folder holding the .obb files, in the main folder or else in the other one. */
+    static File findObbAnywhere(Context ctx) {
         for (File dir : Storage.sources(ctx)) {
             File f = findObb(dir);
             if (f != null) return f;
@@ -301,6 +323,7 @@ final class GameProcess {
         return null;
     }
 
+    /** The folder holding the .obb files: the archive's own layout, or the files put there directly. */
     private static File findObb(File external) {
         File[] candidates = {
             new File(external, GAME_PACKAGE),
@@ -356,6 +379,9 @@ final class GameProcess {
         // The port's AudioTrack class writes the game's mixer blocks straight into the FIFO (see audioLoop()).
         env.put("MC4_AUDIO_FIFO", fifo.getPath());
         env.put("MC4_CONTROL_DIR", control.getPath());
+        seedProfile(new File(root, "game"), saveFolder);
+        env.put("MC4_SAVEDIR", new File(new File(root, "game"), saveFolder).getPath());
+        appendLog("[wrapper] profile folder " + saveFolder);
         // OpenGL ES calls are executed by the app on the GPU (GlBridge); nothing renders inside qemu.
         env.put("MC4_GL_BRIDGE", "1");
         env.put("MC4_GL_CMD", glCmd.getPath());
@@ -563,10 +589,20 @@ final class GameProcess {
     private void extractNative(File apk, File out) throws IOException {
         try (ZipFile z = new ZipFile(apk)) {
             ZipEntry e = z.getEntry(NATIVE_LIB);
-            if (e == null) throw new IOException("В APK нет " + NATIVE_LIB + ".\nНужна версия 1.2.3e.");
-            if (out.exists() && out.length() == e.getSize()) return;
+            if (e == null) throw new IOException("В APK нет " + NATIVE_LIB + ".\nНужна версия 1.2.3e или 1.2.1a.");
+            // Same size is not the same library: 1.2.1a and its MSAA build differ by a few bytes only.
+            if (out.exists() && out.length() == e.getSize() && crc32(out) == e.getCrc()) return;
             copy(z.getInputStream(e), new FileOutputStream(out));
         }
+    }
+
+    private static long crc32(File f) throws IOException {
+        java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+        try (InputStream in = new FileInputStream(f)) {
+            byte[] buf = new byte[65536];
+            for (int n; (n = in.read(buf)) > 0; ) crc.update(buf, 0, n);
+        }
+        return crc.getValue();
     }
 
     void log(String line) { appendLog("[app] " + line); }
@@ -646,7 +682,7 @@ final class GameProcess {
                 if (e.isDirectory() || !n.startsWith("assets/")) continue;
                 File out = new File(dir, n.substring("assets/".length()));
                 if (!out.getCanonicalPath().startsWith(base)) throw new IOException("bad zip entry " + n);
-                if (out.isFile() && out.length() == e.getSize()) continue;
+                if (out.isFile() && out.length() == e.getSize() && crc32(out) == e.getCrc()) continue;
                 File parent = out.getParentFile();
                 if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("mkdir " + parent);
                 try (InputStream in = z.getInputStream(e)) {
@@ -696,9 +732,50 @@ final class GameProcess {
         }
     }
 
+    /**
+     * The first time a version gets a profile folder of its own, it starts as a copy of "saves" (where every version
+     * wrote before the profiles were split), so progress and settings are not lost; the marker keeps this to once.
+     */
+    private void seedProfile(File game, String folder) {
+        if (folder.equals("saves")) return;
+        File from = new File(game, "saves"), to = new File(game, folder), marker = new File(to, ".seeded");
+        if (marker.exists() || !from.isDirectory()) return;
+        try {
+            copyTree(from, to);
+            marker.createNewFile();
+            appendLog("[wrapper] profile " + folder + " seeded from saves");
+        } catch (IOException e) {
+            appendLog("[wrapper] profile seeding failed: " + e.getMessage());
+        }
+    }
+
+    /** Copies the files under src into dst, replacing the ones that are there; src is left as it is. */
+    private static void copyTree(File src, File dst) throws IOException {
+        if (!dst.isDirectory() && !dst.mkdirs()) throw new IOException("mkdir " + dst);
+        File[] list = src.listFiles();
+        if (list == null) return;
+        for (File f : list) {
+            File t = new File(dst, f.getName());
+            if (f.isDirectory()) copyTree(f, t);
+            else if (f.isFile()) Storage.copyFile(f, t);
+        }
+    }
+
+    /** Is f itself a symbolic link (not what it points to)? */
+    private static boolean isLink(File f) {
+        try {
+            return OsConstants.S_ISLNK(Os.lstat(f.getPath()).st_mode);
+        } catch (ErrnoException e) {
+            return false;
+        }
+    }
+
+    /** Deletes f and what is under it; a symbolic link is removed alone, never followed into the player's files. */
     private static void deleteTree(File f) {
-        File[] children = f.listFiles();
-        if (children != null) for (File c : children) deleteTree(c);
+        if (!isLink(f)) {
+            File[] children = f.listFiles();
+            if (children != null) for (File c : children) deleteTree(c);
+        }
         f.delete();
     }
 }

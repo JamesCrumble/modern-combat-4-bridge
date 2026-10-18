@@ -21,6 +21,7 @@
  * What the game writes (saves, preferences) goes to io_writable_dir().
  */
 
+#include <dirent.h>
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -52,12 +53,38 @@ static const char *obb_dir(void)
     return dir;
 }
 
+/*
+ * The patch file's name carries the game's build number (12222 for 1.2.3e, 11764 for 1.2.1a), so it is
+ * whichever patch.*.obb the wrapper linked into the obb folder; kPatchObb is only the answer for a folder
+ * that has none.
+ */
+static const char *patch_obb_name(void)
+{
+    static char name[NAME_MAX + 1];
+    if (!name[0]) {
+        snprintf(name, sizeof(name), "%s", kPatchObb);
+        if (DIR *d = opendir(obb_dir())) {
+            /* readdir64: the 32-bit readdir fails with EOVERFLOW on a filesystem with 64-bit inode numbers. */
+            while (struct dirent64 *e = readdir64(d)) {
+                size_t n = strlen(e->d_name);
+                if (strncmp(e->d_name, "patch.", 6) == 0 && n > 10 && strcmp(e->d_name + n - 4, ".obb") == 0) {
+                    snprintf(name, sizeof(name), "%s", e->d_name);
+                    break;
+                }
+            }
+            closedir(d);
+        }
+        trace("obb: patch file %s", name);
+    }
+    return name;
+}
+
 const char *mc4_obb_path(bool patch)
 {
     static char path[2][PATH_MAX];
     char *p = path[patch ? 1 : 0];
     if (!p[0])
-        snprintf(p, PATH_MAX, "%s/%s", obb_dir(), patch ? kPatchObb : kMainObb);
+        snprintf(p, PATH_MAX, "%s/%s", obb_dir(), patch ? patch_obb_name() : kMainObb);
     return p;
 }
 

@@ -207,7 +207,33 @@ final class GlBridge implements Runnable {
         if (!EGL14.eglMakeCurrent(dpy, pbuf, pbuf, ctx)) throw new IllegalStateException("eglMakeCurrent failed");
 
         log.log("GL_RENDERER " + GLES30.glGetString(GLES30.GL_RENDERER) + ", GL_VERSION " + GLES30.glGetString(GLES30.GL_VERSION));
-        log.log("GL_EXTENSIONS " + GLES30.glGetString(GLES30.GL_EXTENSIONS));
+        String extensions = GLES30.glGetString(GLES30.GL_EXTENSIONS);
+        log.log("GL_EXTENSIONS " + extensions);
+        nonConstInit = extensions != null && extensions.contains(NON_CONST_INIT);
+    }
+
+    private static final String NON_CONST_INIT = "GL_EXT_shader_non_constant_global_initializers";
+    /** Does the driver accept uniforms in global initializers once a shader asks for it with #extension? */
+    private boolean nonConstInit;
+
+    /**
+     * Older Adreno drivers took "vec4 c = SomeUniform;" at global scope, which GLSL ES 1.00 forbids and the current
+     * ones refuse (1.2.1a's ProfileCommon shaders do it with ShadowColor, so every one of them failed to compile).
+     * The extension lifts the rule; it has to come before the first token, right after a #version line if there is one.
+     */
+    private String fixShaderSource(String src) {
+        // 1.2.1a's ProfileCommon_FS ends with "gl_FragColor.1 = 1.0;": a typo for the alpha channel that old drivers let by.
+        src = src.replace("gl_FragColor.1 ", "gl_FragColor.a ");
+        if (!nonConstInit) return src;
+        String line = "#extension " + NON_CONST_INIT + " : enable\n";
+        int at = 0;
+        while (at < src.length() && Character.isWhitespace(src.charAt(at))) at++;
+        if (src.startsWith("#version", at)) {
+            int eol = src.indexOf('\n', at);
+            at = eol < 0 ? src.length() : eol + 1;
+            return src.substring(0, at) + (eol < 0 ? "\n" : "") + line + src.substring(at);
+        }
+        return line + src;
     }
 
     private void teardown() {
@@ -446,7 +472,7 @@ final class GlBridge implements Runnable {
                 int id = i(), n = i();
                 byte[] src = new byte[n];
                 pay.get(src);
-                GLES30.glShaderSource(ids.shader.get(id), new String(src, LATIN1));
+                GLES30.glShaderSource(ids.shader.get(id), fixShaderSource(new String(src, LATIN1)));
                 break;
             }
             case GlOps.OP_UNIFORM_V: uniformV(); break;
