@@ -117,6 +117,10 @@ public final class SettingsActivity extends Activity {
         col.addView(choice("Разрешение рендера (высота)", "RENDER_HEIGHT", new int[] { 480, 540, 720 }, 720, "p",
                 "Ширина считается по пропорциям экрана. Ниже — быстрее."));
 
+        col.addView(choice("Качество графики", "MC4_GENERATION", new int[] { 0, 1, 3 },
+                new String[] { "Низкое", "Среднее", "Ультра" }, 3, "",
+                "Класс устройства, по которому игра выбирает эффекты и детализацию. Не зависит от APK. Ниже — быстрее."));
+
         col.addView(choice("Лимит кадров", "FPS_LIMIT", new int[] { 30, 60, 90, 120 }, 60, " fps",
                 "Целевая частота экрана и верхняя граница частоты кадров игры."));
         col.addView(toggle("Счётчик FPS", "FPS_COUNTER", true, "Маленькая зелёная цифра вверху по центру экрана."));
@@ -311,6 +315,11 @@ public final class SettingsActivity extends Activity {
     }
 
     private View choice(String title, String key, int[] options, int def, String unit, String hint) {
+        return choice(title, key, options, null, def, unit, hint);
+    }
+
+    /** One button per option; labels (when given) replace the number on the button. */
+    private View choice(String title, String key, int[] options, String[] labels, int def, String unit, String hint) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.VERTICAL);
         row.setPadding(0, px(10), 0, px(4));
@@ -324,7 +333,7 @@ public final class SettingsActivity extends Activity {
             final int o = options[i];
             Button b = new Button(this);
             b.setAllCaps(false);
-            b.setText(o + unit);
+            b.setText(labels != null ? labels[i] : o + unit);
             b.setMinWidth(0);
             b.setMinimumWidth(0);
             bs[i] = b;
