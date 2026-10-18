@@ -6,6 +6,7 @@
  *                         which qemu-user emulates by trapping out of translated code on every call.
  *                         Each literal holding that address is pointed at a small ldrex/strex routine.
  *   <PREFIX>_SLEEP_TRACE=1   who calls glf::Thread::Sleep, see sleep_trace_hook.
+ *   <PREFIX>_MONEY_INFINITE=1, <PREFIX>_MONEY_RESTORE=N   the credits balance, see install_money.
  *   <PREFIX>_UCLAMP=0     leave the scheduler's clamp on the main thread alone (see mc4_sched_tick).
  *   <PREFIX>_UCLAMP_MIN=0..1024 also ask for at least this much (0 by default).
  */
@@ -111,10 +112,105 @@ static void sleep_trace_hook_member(void *self, unsigned ms)
     sleep_trace((uintptr_t)__builtin_return_address(0), ms);
 }
 
+/*
+ * <PREFIX>_MONEY_INFINITE=1: the player's credits read as kMoneyInfinite and spending takes nothing.
+ * <PREFIX>_MONEY_RESTORE=N:  once the player profile is there, the credits are set to N (the infinite
+ *                            option is off, or its profile is left alone).
+ *
+ * Both exports are short and start with a push, so the first words are overwritten outright:
+ *
+ *     PlayerProfileBase::GetTotalCredits() const   ->  ldr r0, [pc, #0] ; bx lr ; .word kMoneyInfinite
+ *     PlayerProfileBase::RemoveCredits(int)        ->  bx lr
+ *
+ * Nothing else changes the stored balance: AddCredits still adds to the real one (the token at
+ * profile + 156), so switching the option off gives back what the player had plus what was earned.
+ * Of the 63 callers of the getter and 12 of RemoveCredits none reads the token directly (the one place
+ * that writes it is the profile's own set-up).
+ *
+ * MONEY_RESTORE writes the real balance through the token's own operator= and marks the profile
+ * changed (the byte at +200 that AddCredits sets), a little after the profile first answers as valid so
+ * that a load in progress does not overwrite it.
+ */
+static const int kMoneyInfinite = 9999999;
+
+static void *(*g_settings_instance)(void);
+static void *(*g_active_profile)(void *);
+static void *(*g_token_assign)(void *, const int *);
+static int  (*g_token_get)(const void *);
+static long g_money_restore = -1;
+
+static void install_money(so_module *mod)
+{
+    long restore = port_getenv_long("MONEY_RESTORE", -1);
+    bool infinite = port_getenv_long("MONEY_INFINITE", 0) != 0;
+    if (!infinite && restore < 0)
+        return;
+
+    if (infinite) {
+        uint32_t *get = (uint32_t *)so_symbol(mod, "_ZNK17PlayerProfileBase15GetTotalCreditsEv");
+        uint32_t *rem = (uint32_t *)so_symbol(mod, "_ZN17PlayerProfileBase13RemoveCreditsEi");
+        if (get && rem && get[0] == 0xe92d4010u && rem[0] == 0xe92d40f0u) {
+            get[0] = 0xe59f0000u;           /* ldr r0, [pc, #0]  (the word after the next one) */
+            get[1] = 0xe12fff1eu;           /* bx lr */
+            get[2] = (uint32_t)kMoneyInfinite;
+            rem[0] = 0xe12fff1eu;           /* bx lr */
+            __builtin___clear_cache((char *)get, (char *)(get + 3));
+            __builtin___clear_cache((char *)rem, (char *)(rem + 1));
+            trace("tweaks: money: infinite (%d), spending takes nothing", kMoneyInfinite);
+        } else {
+            trace("tweaks: money: GetTotalCredits/RemoveCredits not as in 1.2.3e - infinite money left off");
+        }
+        return;
+    }
+
+    g_settings_instance = (void *(*)(void))so_symbol(mod, "_ZN12GameSettings11GetInstanceEv");
+    g_active_profile = (void *(*)(void *))so_symbol(mod, "_ZN12GameSettings16GetPlayerProfileEv");
+    g_token_assign = (void *(*)(void *, const int *))so_symbol(mod, "_ZN19ObfuscatedDataTokenaSERKi");
+    g_token_get = (int (*)(const void *))so_symbol(mod, "_ZNK19ObfuscatedDataTokencviEv");
+    if (!g_settings_instance || !g_active_profile || !g_token_assign || !g_token_get) {
+        trace("tweaks: money: restore needs GameSettings/ObfuscatedDataToken exports - not found, left alone");
+        return;
+    }
+    g_money_restore = restore > 99999999 ? 99999999 : restore;
+    trace("tweaks: money: credits will be set to %ld once the profile is there", g_money_restore);
+}
+
+static void money_tick(long frames)
+{
+    static long ready_at = -1;
+    if (g_money_restore < 0 || frames % 30 != 0)
+        return;
+    void *settings = g_settings_instance();
+    if (!settings)
+        return;
+    char *profile = (char *)g_active_profile(settings);
+    if (!profile)
+        return;
+    /* The same two virtual calls the getter makes first; the second one's answer says the profile is valid. */
+    void **vt = *(void ***)profile;
+    ((void (*)(void *))vt[10])(profile);
+    if (!((int (*)(void *))vt[10])(profile)) {
+        ready_at = -1;
+        return;
+    }
+    if (ready_at < 0)
+        ready_at = frames;
+    if (frames - ready_at < 300)
+        return;
+    int before = g_token_get(profile + 156);
+    int value = (int)g_money_restore;
+    g_token_assign(profile + 156, &value);
+    profile[200] = 1;
+    trace("tweaks: money: credits %d replaced by %d", before, value);
+    g_money_restore = -1;
+}
+
 void mc4_tweaks_install(so_module *mod)
 {
     if (port_getenv_long("FAST_CAS", 1))
         install_fast_cas(mod);
+
+    install_money(mod);
 
     if (port_getenv_long("SLEEP_TRACE", 0)) {
         g_trace_mod = mod;
@@ -162,6 +258,8 @@ static int set_uclamp(uint32_t lo)
 
 void mc4_sched_tick(long frames)
 {
+    money_tick(frames);
+
     static int state = -1;      /* -1 not tried, 0 off, 1 working */
     static uint32_t lo;
 

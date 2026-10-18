@@ -7,6 +7,6 @@
 #ifndef MC4_PORT_VERSION_H
 #define MC4_PORT_VERSION_H
 
-#define MC4_PORT_VERSION "0.1"
+#define MC4_PORT_VERSION "0.3"
 
 #endif /* MC4_PORT_VERSION_H */

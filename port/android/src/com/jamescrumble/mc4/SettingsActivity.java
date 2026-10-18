@@ -6,11 +6,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.text.Editable;
+import android.text.InputFilter;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.SeekBar;
@@ -63,11 +68,24 @@ public final class SettingsActivity extends Activity {
         return m;
     }
 
-    private boolean save() {
+    private static void write(Context c, Map<String, String> m) throws IOException {
         StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, String> e : values.entrySet()) sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
-        try (FileOutputStream out = new FileOutputStream(new File(Storage.mainDir(this), "settings.txt"))) {
+        for (Map.Entry<String, String> e : m.entrySet()) sb.append(e.getKey()).append('=').append(e.getValue()).append('\n');
+        try (FileOutputStream out = new FileOutputStream(new File(Storage.mainDir(c), "settings.txt"))) {
             out.write(sb.toString().getBytes("UTF-8"));
+        }
+    }
+
+    /** Removes a one-shot value from the saved settings once the game has taken it. */
+    static void consume(Context c, String key) {
+        Map<String, String> m = load(c);
+        if (m.remove(key) == null) return;
+        try { write(c, m); } catch (IOException ignored) { }
+    }
+
+    private boolean save() {
+        try {
+            write(this, values);
             return true;
         } catch (IOException e) {
             Toast.makeText(this, "Не удалось сохранить: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -97,6 +115,14 @@ public final class SettingsActivity extends Activity {
         col.addView(choice("Лимит кадров", "FPS_LIMIT", new int[] { 30, 60, 90, 120 }, 60, " fps",
                 "Целевая частота экрана и верхняя граница частоты кадров игры."));
         col.addView(toggle("Счётчик FPS", "FPS_COUNTER", true, "Маленькая зелёная цифра вверху по центру экрана."));
+
+        col.addView(section("Деньги"));
+        col.addView(toggle("Бесконечные деньги", "MC4_MONEY_INFINITE", false,
+                "Кредиты показываются как 9 999 999, покупки ничего не списывают. Настоящий баланс не трогается: "
+                        + "выключишь — вернётся то, что было, плюс заработанное."));
+        col.addView(amount("Задать кредиты", "MC4_MONEY_RESTORE", 9999999,
+                "Впиши сумму и нажми «Играть»: когда игра загрузит профиль, кредиты станут этой суммой (один раз). "
+                        + "При включённых бесконечных деньгах не действует."));
 
         col.addView(section("Звук"));
         col.addView(choice("Буфер звука", "AUDIO_LATENCY_MS", new int[] { 0, 200, 400 }, 0, " мс",
@@ -292,6 +318,33 @@ public final class SettingsActivity extends Activity {
             line.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         }
         row.addView(line);
+        row.addView(text(hint, 12, DIM, false));
+        return row;
+    }
+
+    /** A whole number typed by hand; empty means "not set" and removes the key. */
+    private View amount(String title, String key, int max, String hint) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(0, px(10), 0, px(4));
+        row.addView(text(title, 16, FG, false));
+        EditText in = new EditText(this);
+        in.setInputType(InputType.TYPE_CLASS_NUMBER);
+        in.setFilters(new InputFilter[] { new InputFilter.LengthFilter(String.valueOf(max).length()) });
+        in.setTextColor(FG);
+        in.setHintTextColor(DIM);
+        in.setHint("не задано");
+        in.setText(values.getOrDefault(key, ""));
+        in.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) { }
+            @Override public void afterTextChanged(Editable e) {
+                String t = e.toString().trim();
+                if (t.isEmpty()) { values.remove(key); return; }
+                try { values.put(key, String.valueOf(Math.min(max, Long.parseLong(t)))); } catch (NumberFormatException x) { values.remove(key); }
+            }
+        });
+        row.addView(in);
         row.addView(text(hint, 12, DIM, false));
         return row;
     }

@@ -381,6 +381,14 @@ final class GameProcess {
         for (java.util.Map.Entry<String, String> e : SettingsActivity.load(ctx).entrySet())
             if (!e.getKey().equals("RENDER_HEIGHT") && !e.getKey().equals("CPU_PRIME")
                     && !e.getKey().equals("AUDIO_LATENCY_MS") && !e.getKey().equals("PERF_HINT")) env.put(e.getKey(), e.getValue());
+        // The credits to set are a one-shot value: they go to the game only while the infinite balance is off,
+        // and are removed from settings.txt once handed over.
+        if (!"1".equals(env.get("MC4_MONEY_INFINITE")) && env.containsKey("MC4_MONEY_RESTORE")) {
+            SettingsActivity.consume(ctx, "MC4_MONEY_RESTORE");
+            appendLog("[wrapper] money restore " + env.get("MC4_MONEY_RESTORE"));
+        } else {
+            env.remove("MC4_MONEY_RESTORE");
+        }
         // Our qemu: guest syscall counts every 10 s in the log (which ones leave translated code most often).
         env.put("QEMU_SYSCALL_STATS", "1");
         // Guest-function profile: qemu samples the game's PC (tools/guest_prof.py maps it to functions).
