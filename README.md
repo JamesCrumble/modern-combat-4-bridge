@@ -11,3 +11,10 @@ tools/push_data.sh                 # APK игры (Ultra) и два OBB на т�
 tools/launch.sh install            # установить и запустить
 tools/pull_log.sh                  # лог -> logs/phone.log
 ```
+
+## Файлы игры
+
+**Папка BridgeGames.** С доступом ко всем файлам она основная: из `Android/data/com.jamescrumble.mc4/files/` туда сами переезжают все файлы
+(APK, кэш, настройки, лог). Читаются обе папки, без доступа всё работает с папкой в `Android/data`. Сохранения игра хранит внутри папки кэша. Как это устроено и как перенести в другой порт: [docs/STORAGE.md](docs/STORAGE.md).
+
+Подробная установка: `tools/release_install.txt`.
