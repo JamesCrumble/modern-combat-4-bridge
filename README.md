@@ -12,6 +12,12 @@ tools/launch.sh install            # установить и запустить
 tools/pull_log.sh                  # лог -> logs/phone.log
 ```
 
+## 💳 Поддержка проекта
+
+Если вам нравится проект и вы хотите поддержать разработку:
+
+👉 **[Отправить чаевые через CloudTips](https://pay.cloudtips.ru/p/cad77257)**
+
 ## Файлы игры
 
 **Папка BridgeGames.** С доступом ко всем файлам она основная: из `Android/data/com.jamescrumble.mc4/files/` туда сами переезжают все файлы
