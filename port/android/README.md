@@ -90,7 +90,7 @@ adb shell "find /sdcard/Android/data/com.jamescrumble.wildblood/files/com.gamelo
 ```sh
 # WSL, из корня репозитория. Нужны: build/wb (порт), Android SDK build-tools 34.0.0 + platform 34,
 # JDK 8+ (javac), python3. QEMU_BIN — наш qemu-arm (см. qemu/README.md); без него берётся Debian 7.2.
-QEMU_BIN=/path/to/qemu-arm.stripped JAVA_HOME=/path/to/jdk bash android/build_apk.sh
+QEMU_BIN=/path/to/qemu-arm.stripped JAVA_HOME=../__shared-third-party__/jdk bash android/build_apk.sh
 ```
 
 Результат: `WildBlood-Bridge-debug.apk` в папке `port/`. Иконка берётся из APK игры (`GAME_APK` или первый APK в `gamebin/`). Ключ отладочной подписи хранится в

@@ -1,9 +1,9 @@
-# Third-party toolchains and sources (copied or fetched locally, never committed)
+# Third-party toolchains/sources/downloads: the project may hold a local copy (it takes precedence), by default they come from ../__shared-third-party__
 /android-sdk/
 /jdk/
+/sdl-arm/
 /downloads/
 /qemu-src/
-/sdl-arm/
 # Game files are the player's own (Gameloft), never the repo's
 /gamebin/
 /mc4data/

@@ -47,7 +47,8 @@ GDRM — как в N.O.V.A. 3 и Wild Blood.
 | `port/game/jni/*_gen.inc` | тихие заглушки Java-методов, пишет `tools/gen_stubs.sh` из dex и строк библиотеки |
 | `port/portbase/` | база из Wild Blood; добавлено: `AAsset_read/seek`, `eglGetCurrentDisplay`, `gettid`, `android_egl_set_presenter` |
 | `port/android/` | APK-обёртка (пакет `com.jamescrumble.mc4`), `build_apk.sh` |
-| `jdk/ android-sdk/ sdl-arm/ qemu/out/ port/android/build/sysroot/` | локальные копии из `../wild-blood-probe` |
+| `qemu/out/ port/android/build/sysroot/` | локальные копии из `../wild-blood-probe` |
+| `../__shared-third-party__/{jdk,android-sdk,sdl-arm}` | общие тулчейны всех проектов |
 | `mc4data/` | для запуска на ПК: `apk/<вариант>/` (распаковка), `obb/`, ссылки `lib`, `assets`, `game.apk`, папка `files` |
 | `extracted/` | `classes.txt` (dexdump Ultra), `strings.txt`, `imports.txt`, `syms.txt` |
 | `tools/` | `build_install.sh`, `run_pc.sh`, `push_data.sh`, `launch.sh`, `pull_log.sh`, `dexmethod.py`, `sym.py` (адрес -> функция), `gen_stubs.sh` |
